@@ -1,0 +1,8 @@
+{
+  "name": "OrgoMentor AI",
+  "description": "Expert AI Tutor for Undergraduate Organic Chemistry featuring multimodal input, advanced chemical notation, and laboratory project design guidance.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
