@@ -1,15 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, MicOff, Volume2, VolumeX, X } from 'lucide-react';
+import { Mic, MicOff, Volume2, VolumeX, X, Camera } from 'lucide-react';
+import { CameraCapture } from './CameraCapture';
 
 interface LiveModeProps {
   onClose: () => void;
   lastResponse: string;
+  onCapture: (base64: string, mimeType: string) => void;
 }
 
-export const LiveMode = ({ onClose, lastResponse }: LiveModeProps) => {
+export const LiveMode = ({ onClose, lastResponse, onCapture }: LiveModeProps) => {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [caption, setCaption] = useState("");
   
   // Simulate captions based on last response
@@ -87,12 +90,29 @@ export const LiveMode = ({ onClose, lastResponse }: LiveModeProps) => {
             {isListening ? <Mic className="w-6 h-6" /> : <MicOff className="w-6 h-6" />}
           </button>
           <button 
+            onClick={() => setIsCameraOpen(true)}
+            className="w-16 h-16 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-all"
+            title="Capture Image"
+          >
+            <Camera className="w-6 h-6" />
+          </button>
+          <button 
             className="w-16 h-16 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-all"
           >
             <Volume2 className="w-6 h-6" />
           </button>
         </div>
       </div>
+
+      {/* Camera Capture Overlay */}
+      <AnimatePresence>
+        {isCameraOpen && (
+          <CameraCapture 
+            onClose={() => setIsCameraOpen(false)}
+            onCapture={onCapture}
+          />
+        )}
+      </AnimatePresence>
 
       <div className="absolute bottom-12 left-0 right-0 flex justify-center">
         <div className="bg-white/5 border border-white/10 rounded-full px-6 py-2 flex items-center gap-3">

@@ -19,7 +19,8 @@ import {
   Trash2,
   FileText,
   FileDown,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Camera
 } from 'lucide-react';
 import { geminiService } from './services/gemini';
 import { exportToMarkdown, exportToPDF, exportToWord } from './services/exportService';
@@ -27,6 +28,7 @@ import { ChatMessage, ProjectDesignState, MessagePart } from './types';
 import { FormulaRenderer } from './components/FormulaRenderer';
 import { HeilmeierTracker } from './components/HeilmeierTracker';
 import { LiveMode } from './components/LiveMode';
+import { CameraCapture } from './components/CameraCapture';
 import { HEILMEIER_QUESTIONS } from './constants';
 import confetti from 'canvas-confetti';
 
@@ -35,6 +37,7 @@ export default function App() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLiveMode, setIsLiveMode] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [projectState, setProjectState] = useState<ProjectDesignState>({
     currentQuestion: -1,
@@ -112,12 +115,15 @@ export default function App() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    processFile(file);
+  };
 
+  const processFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = async (event) => {
       const base64 = (event.target?.result as string).split(',')[1];
       const userParts: MessagePart[] = [
-        { text: `I've uploaded a file: ${file.name}. Please analyze it.` },
+        { text: `I've shared an image: ${file.name || 'captured_image.jpg'}. Please analyze it.` },
         { inlineData: { mimeType: file.type, data: base64 } }
       ];
       
@@ -146,6 +152,42 @@ export default function App() {
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const blob = items[i].getAsFile();
+        if (blob) processFile(blob);
+      }
+    }
+  };
+
+  const handleCameraCapture = (base64: string, mimeType: string) => {
+    const userParts: MessagePart[] = [
+      { text: "I've captured an image from my camera. Please analyze it." },
+      { inlineData: { mimeType, data: base64 } }
+    ];
+    
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      parts: userParts,
+      timestamp: Date.now()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+
+    geminiService.sendMessage(messages, userParts).then(response => {
+      setMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        role: 'model',
+        parts: [{ text: response }],
+        timestamp: Date.now()
+      }]);
+    }).catch(console.error).finally(() => setIsLoading(false));
   };
 
   const startProjectDesign = () => {
@@ -284,90 +326,100 @@ export default function App() {
         </header>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-8">
-          {messages.length === 0 && (
-            <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-6">
-              <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 rounded-2xl flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-                <FlaskConical className="w-8 h-8" />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-2xl font-serif italic">Welcome to OrgoMentor</h3>
-                <p className="text-sm text-slate-500 leading-relaxed">
-                  I'm your expert AI tutor for organic chemistry. I can help with mechanisms, spectral interpretation, or designing your next lab project.
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-3 w-full">
-                <button 
-                  onClick={() => setInput("Explain the mechanism of the Diels-Alder reaction.")}
-                  className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-[11px] text-left hover:border-emerald-500 transition-colors"
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="max-w-5xl mx-auto w-full p-6 lg:p-12 space-y-12">
+            {messages.length === 0 && (
+              <div className="min-h-[60vh] flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-8 py-12">
+                <motion.div 
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-3xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-inner"
                 >
-                  "Explain the Diels-Alder mechanism..."
-                </button>
-                <button 
-                  onClick={() => setInput("How do I interpret an NMR spectrum with a singlet at 3.8 ppm?")}
-                  className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-[11px] text-left hover:border-emerald-500 transition-colors"
-                >
-                  "How to interpret NMR peaks..."
-                </button>
+                  <FlaskConical className="w-10 h-10" />
+                </motion.div>
+                <div className="space-y-3">
+                  <h3 className="text-3xl font-serif italic font-bold text-slate-900 dark:text-white">Welcome to OrgoMentor</h3>
+                  <p className="text-base text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Your expert PhD-level companion for organic chemistry. How can we advance your research or studies today?
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                  <button 
+                    onClick={() => setInput("Explain the mechanism of the Diels-Alder reaction.")}
+                    className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs text-left hover:border-emerald-500 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10 transition-all group"
+                  >
+                    <span className="block font-semibold mb-1 group-hover:text-emerald-600">Diels-Alder</span>
+                    <span className="text-slate-400">"Explain the mechanism..."</span>
+                  </button>
+                  <button 
+                    onClick={() => setInput("How do I interpret an NMR spectrum with a singlet at 3.8 ppm?")}
+                    className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs text-left hover:border-emerald-500 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10 transition-all group"
+                  >
+                    <span className="block font-semibold mb-1 group-hover:text-emerald-600">NMR Analysis</span>
+                    <span className="text-slate-400">"How to interpret peaks..."</span>
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {messages.map((msg) => (
-            <div 
-              key={msg.id}
-              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div className={`max-w-[85%] lg:max-w-[70%] space-y-2`}>
-                <div className={`flex items-center gap-2 mb-1 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-slate-400">
-                    {msg.role === 'user' ? 'Student' : 'OrgoMentor'}
-                  </span>
-                  <span className="text-[10px] text-slate-300">
-                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+            {messages.map((msg) => (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                key={msg.id}
+                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div className={`max-w-[90%] lg:max-w-[80%] space-y-2`}>
+                  <div className={`flex items-center gap-2 mb-1 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-slate-400 font-bold">
+                      {msg.role === 'user' ? 'Student' : 'OrgoMentor'}
+                    </span>
+                    <span className="text-[10px] text-slate-300">
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <div className={`p-6 rounded-3xl shadow-sm ${
+                    msg.role === 'user' 
+                      ? 'bg-emerald-600 text-white rounded-tr-none' 
+                      : 'bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-tl-none'
+                  }`}>
+                    {msg.parts.map((part, i) => (
+                      <div key={i}>
+                        {part.text && (
+                          <div className={msg.role === 'user' ? 'text-white' : ''}>
+                            <FormulaRenderer content={part.text} />
+                          </div>
+                        )}
+                        {part.inlineData && (
+                          <div className="mt-4 rounded-2xl overflow-hidden border border-white/20 shadow-lg">
+                            <img 
+                              src={`data:${part.inlineData.mimeType};base64,${part.inlineData.data}`} 
+                              alt="Attachment"
+                              className="max-w-full h-auto"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className={`p-5 rounded-2xl shadow-sm ${
-                  msg.role === 'user' 
-                    ? 'bg-emerald-600 text-white rounded-tr-none' 
-                    : 'bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-tl-none'
-                }`}>
-                  {msg.parts.map((part, i) => (
-                    <div key={i}>
-                      {part.text && (
-                        <div className={msg.role === 'user' ? 'text-white' : ''}>
-                          <FormulaRenderer content={part.text} />
-                        </div>
-                      )}
-                      {part.inlineData && (
-                        <div className="mt-3 rounded-lg overflow-hidden border border-white/20">
-                          <img 
-                            src={`data:${part.inlineData.mimeType};base64,${part.inlineData.data}`} 
-                            alt="Attachment"
-                            className="max-w-full h-auto"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
+              </motion.div>
+            ))}
+            
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-5 rounded-3xl rounded-tl-none flex items-center gap-4 shadow-sm">
+                  <div className="flex gap-1.5">
+                    <motion.div animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 1 }} className="w-2 h-2 bg-emerald-500 rounded-full" />
+                    <motion.div animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-2 h-2 bg-emerald-500 rounded-full" />
+                    <motion.div animate={{ scale: [1, 1.3, 1], opacity: [0.5, 1, 0.5] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-2 h-2 bg-emerald-500 rounded-full" />
+                  </div>
+                  <span className="text-xs text-slate-400 font-mono tracking-tight">OrgoMentor is performing a chemical self-audit...</span>
                 </div>
               </div>
-            </div>
-          ))}
-          
-          {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-4 rounded-2xl rounded-tl-none flex items-center gap-3">
-                <div className="flex gap-1">
-                  <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1 }} className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                  <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                  <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                </div>
-                <span className="text-xs text-slate-400 font-mono">Self-auditing response...</span>
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
+            )}
+            <div ref={messagesEndRef} className="h-4" />
+          </div>
         </div>
 
         {/* Input Area */}
@@ -382,6 +434,14 @@ export default function App() {
               >
                 <Paperclip className="w-5 h-5" />
               </button>
+              <button 
+                type="button"
+                onClick={() => setIsCameraOpen(true)}
+                className="p-3 text-slate-400 hover:text-emerald-500 transition-colors"
+                title="Capture from Camera"
+              >
+                <Camera className="w-5 h-5" />
+              </button>
               <input 
                 type="file" 
                 ref={fileInputRef} 
@@ -392,6 +452,7 @@ export default function App() {
               <textarea 
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                onPaste={handlePaste}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -435,6 +496,17 @@ export default function App() {
           <LiveMode 
             onClose={() => setIsLiveMode(false)} 
             lastResponse={messages.filter(m => m.role === 'model').slice(-1)[0]?.parts[0]?.text || ""}
+            onCapture={handleCameraCapture}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Camera Capture Overlay */}
+      <AnimatePresence>
+        {isCameraOpen && (
+          <CameraCapture 
+            onClose={() => setIsCameraOpen(false)}
+            onCapture={handleCameraCapture}
           />
         )}
       </AnimatePresence>
